@@ -18,35 +18,95 @@ const  { Client } = require('pg');
 
 
 class TableAbstract{
-  #records = []; // the list of original records that 
-  #addedRecords = []; // a list of records to be added to the database 
-  #queryState = { //  the query state is what holds all of the modifications to the
-                    //  data pull and gets converted to sql when we want to get rows  
-                  sort : {  //  
-                      column : null,
-                      order : null
-                  },
-                  filters : [
-                    {
-                      columnName : "",
-                      filter : "=",
-                      value = "32"
-                    }
-                  ]
-
-                };
-
-  constructor(name,structure){
+  
+  constructor(name,schema,structure){
     //  so the structure is going to be how 
     //  a row object is going to be built 
-    
+    this.records = []; // the list of original records that 
+    this.addedRecords = []; // a list of records to be added to the database 
+    this.queryState = { //  the query state is what holds all of the modifications to the
+        //  data pull and gets converted to sql when we want to get rows  
+      sort : {  //  
+          column : null,
+          order : null
+      },
+      limit : 0,
+      offset: 0,
+      filters : []
+    };
+
+    this.columns = structure;
+    this.tableName = name;
+    this.schema = schema
+
 
   }
   /**
    * Pass differnt filters though it to add it to the 
    * resulting querey 
+   * filter objects can be raw sql, filter objects and working on decoding functions / lambdas 
    */
-  where(filterObject){
+   where(filterObject){
+    if(typeof filterObject === 'string' || filterObject instanceof String){
+      //  if the filter object is a striat up string we need to parse it into 
+      //  a filter object so we should split it up by " "
+      filterObject = filterObject.split(" ");
+      for(var i=0;i<filterObject.length;i++){
+        if(filterObject[i] == ""){
+          //  remove it from the list if its blank 
+          filterObject.splice( i, 1 );
+        }
+      }
+      //  the second index is the operator so unless its between there should only be one 
+      if(filterObject[1].toLowerCase() != "between"){
+        //  there is only one value 
+        this.queryState.filters.push({
+          columnName : filterObject[0],
+          operator : filterObject[1],
+          value : filterObject[2]
+        })
+      }else{
+        //  there is an upper and lower value instead of jsut value 
+        this.queryState.filters.push({
+          columnName : filterObject[0],
+          operator : filterObject[1],
+          lower_value : filterObject[2],
+          upper_value : filterObject[4] //  skip one becasue of the and in the middle 
+        })
+      }
+    }else if(filterObject && typeof filterObject === 'object' && filterObject.constructor === Object ){
+      // we know it is a legitament object it will have the operator and value keys 
+      if(filterObject.operator && filterObject.value){
+        this.queryState.filters.push(filterObject)
+      }else{
+        //  else it is just a regular object so we need to contruct a simple = filter 
+        
+        //  since we do not have those in the filter object we are free to see what we do have
+        let keys = Object.keys(filterObject);
+        for(var i=0;i<keys.lastIndexOf;i++){
+          //  for each key we have in the filter lets see if it is either a list or 
+          //  a regular 
+          if( filters[[keys[i]]] && typeof filters[[keys[i]]] === 'object' && filters[[keys[i]]].constructor === Array){
+            // if its an array we need to make sure we do the in operator 
+            this.queryState.filters.push({
+              columnName : keys[i],
+              operator : "in",
+              value : filters[[keys[i]]]
+            })
+          }else{
+            //  it is a single value so just equals is good
+            this.queryState.filters.push({
+              columnName : keys[i],
+              operator : "=",
+              value : filters[[keys[i]]]
+            })
+          }
+        }
+      }
+      
+    }else{
+      console.error("Invalid Filter object attempting to be applied");
+    }
     return this;
   }
   /**
@@ -72,12 +132,14 @@ class TableAbstract{
    * tells the db to limit the querey to n items 
    */
   limit(n){
+    this.queryState.limit = n.toString();
     return this;
   }
   /**
    * off set the results by n rows  
    */
   offset(n){
+    this.queryState.offset = n.toString();
     return this;
   }
   /**
@@ -100,8 +162,8 @@ class TableAbstract{
    * in the list, if there are no objects then it returns 
    * null 
    */
-  firstOrDefault(){
-
+   async firstOrDefault(){
+    console.log(this.generateSelectQuery());
   }
   /**
    * this will also execute the qiery and return all the resultsing objects in a list 
@@ -123,9 +185,77 @@ class TableAbstract{
    * There are internal methods that are ment for executing the query and identifying
    * changes after the saveChanges() has been called 
    */
-  getQuery(){
-    //  should be a copy of 
+  generateSelectQuery(){
+    //  should be a copy of query builder word for word 
+    let query_string ="SELECT * , count(*) OVER() AS itemsNumber From " + this.schema + "." + this.tableName + " " ;
+    let query_options = [];
+    let andFlag = false; //if there is only one option no need for and
+    let paramsCount = 0;
+
+    // we need to add all the where statmetns here 
+    let filter_string = "";
+    for(var i=0;i<this.queryState.filters.length;i++){
+      if(andFlag){
+        filter_string += " AND "
+      }else{
+        andFlag = true;
+      }
+
+      //  the structure of the filter object 
+
+      //  standard one way operators 
+      if(["=",">","<",">=","<=","<>"].includes(  this.queryState.filters[i].operator) ){
+        
+        //  TODO add in checks for differnt data types like string vs integers 
+        query_options.push(this.queryState.filters[i].value);
+        filter_string += this.queryState.filters[i].columnName + "  " + this.queryState.filters[i].operator + "  $"+ query_options.length.toString() + "   ";
+      // special case for between since it needs to have 2 vaiables 
+      }else if(["between"].includes(this.queryState.filters[i].operator.toLowerCase())){
+      
+        filter_string;
+      //  the in takes in a list of variables so have to handle that differently 
+      }else if(["in"].includes(this.queryState.filters[i].operator.toLowerCase())){
+        filter_string;
+      }
+    }
+    query_string += filter_string;
+
+    // add the sort statements 
+    if(this.queryState.sort.column){
+      if(this.queryState.sort.order){
+         query_string += "ORDER BY " + this.schema +"." + this.tableName +"." + this.queryState.sort.column + " " + this.queryState.sort.order + " ";
+      }
+    }
+
+    // add the limit and offset statments here 
+    if(this.queryState.limit){
+      query_string += " LIMIT " + this.queryState.limit + " ";
+    }
+
+    if(this.queryState.offset){
+      query_string += " OFFSET " + this.queryState.offset + " "
+    }
+    
+    //  return on object with the built queries for 
+    return {
+      string : query_string,
+      params : query_options
+    }
   }
+  generateInsertQuery(){
+
+  }
+  generateUpdateQuery(){
+
+  }
+  generateDeleteQuery(){
+
+  }
+
+  /**
+   * These are suporting function that will help
+   * in validating objects and column values 
+   */
 
 
 

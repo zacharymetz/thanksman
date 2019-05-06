@@ -67,7 +67,7 @@ class Database{
       var tableName = tableNames[i]
 
       console.log(tableName);
-      this[tableName] = new TableAbstract(tableNames[i],'public',tables[tableNames[i]]);
+      this[tableName] = new TableAbstract(this,tableNames[i],'public',tables[tableNames[i]]);
     }
 
   }

@@ -19,7 +19,8 @@ const  { Client } = require('pg');
 
 class TableAbstract{
   
-  constructor(name,schema,structure){
+  constructor(database,name,schema,structure){
+    this.database = database;
     //  so the structure is going to be how 
     //  a row object is going to be built 
     this.records = []; // the list of original records that 
@@ -153,8 +154,17 @@ class TableAbstract{
    * sees if there are differnces in its own representation of what it pulled and what
    * is the current state and preform the nessisary actions on the changed rows 
    */
-  saveChanges(){
-
+  async saveChanges(){
+    //for now just tell me the chagnes that have been made 
+    for(var i=0;i<this.records.length;i++){
+      let keys = Object.keys(this.records[i]);
+      //  coppy the object 
+      for(var j=0;j<keys.length;j++){
+        if(this.records[i]["_original"][keys[j]] != this.records[i][keys[j]] && keys[j] != "_original"){
+          console.log([keys[j]]," Has been changed from",this.records[i][keys[j]]," to  ",this.records[i]["_original"][keys[j]])
+        }
+      }
+    }
   }
 
   /**
@@ -163,21 +173,56 @@ class TableAbstract{
    * null 
    */
    async firstOrDefault(){
-    console.log(this.generateSelectQuery());
+    var client = new Client({
+      user: this.database.username,
+      host: this.database.hostname,
+      database: this.database.databaseName,
+      password: this.database.password,
+      port: 5432,
+    });
+    let query = this.generateSelectQuery();
+    
+    await client.connect()
+    var res = await client.query(query.string, query.params);
+    await client.end();
+    //  after we preforema query we need to reset the query state 
+    this.resetQueryState();
+    // before returning them we need to save the "current state" of them in the db for update changes
+    this.initalState(res.rows);
+    
+    return res.rows[0];
   }
   /**
    * this will also execute the qiery and return all the resultsing objects in a list 
    * if there are no objects then it will be an empty list 
    */
-  toList(){
-
+  async toList(){
+    var client = new Client({
+      user: this.database.username,
+      host: this.database.hostname,
+      database: this.database.databaseName,
+      password: this.database.password,
+      port: 5432,
+    });
+    let query = this.generateSelectQuery();
+    console.log(query);
+    await client.connect()
+    var res = await client.query(query.string, query.params);
+    await client.end();
+    //  after we preforema query we need to reset the query state 
+    
+    this.resetQueryState();
+    // before returning them we need to save the "current state" of them in the db for update changes
+    this.initalState(res.rows);
+    return res.rows;
   }
   /** 
    * executes the internal query with the limit set at n in a list of model objects 
+   * multiple objects 
    */
+
   first(n){
     
-  
   }
 
 
@@ -187,13 +232,14 @@ class TableAbstract{
    */
   generateSelectQuery(){
     //  should be a copy of query builder word for word 
-    let query_string ="SELECT * , count(*) OVER() AS itemsNumber From " + this.schema + "." + this.tableName + " " ;
+    let query_string ='SELECT * , count(*) OVER() AS itemsNumber From ' + this.schema + ".\"" + this.tableName + "\" " ;
     let query_options = [];
     let andFlag = false; //if there is only one option no need for and
     let paramsCount = 0;
 
     // we need to add all the where statmetns here 
-    let filter_string = "";
+    if(this.queryState.filters.length > 0){
+      let filter_string = " Where ";
     for(var i=0;i<this.queryState.filters.length;i++){
       if(andFlag){
         filter_string += " AND "
@@ -219,6 +265,8 @@ class TableAbstract{
       }
     }
     query_string += filter_string;
+    }
+    
 
     // add the sort statements 
     if(this.queryState.sort.column){
@@ -252,10 +300,70 @@ class TableAbstract{
 
   }
 
+  async getQueryResults(){
+    var client = new Client({
+      user: this.database.username,
+      host: this.database.hostname,
+      database: this.database.databaseName,
+      password: this.database.password,
+      port: 5432,
+    });
+    let query = this.generateSelectQuery();
+    console.log(query);
+    await client.connect()
+    var res = await client.query(query.string, query.params);
+    await client.end();
+    return res.rows;
+  }
+
   /**
    * These are suporting function that will help
    * in validating objects and column values 
    */
+
+  /**
+   * All this does is reset the query state for after each time we return an object or something so we
+   * get a fresh start 
+   */
+  resetQueryState(){
+    this.queryState = { //  the query state is what holds all of the modifications to the
+      //  data pull and gets converted to sql when we want to get rows  
+        sort : {  //  
+            column : null,
+            order : null
+        },
+        limit : 0,
+        offset: 0,
+        filters : []
+      };
+  }
+  //  when we select from the database store the rows in here so that any changes made can be tracked with easy 
+  initalState(rows){
+    if(!(rows && typeof rows === 'object' && rows.constructor === Array)){
+      console.error("You must pass an array of objects through");
+      return;
+    }
+    for(var i=0;i<rows.length;i++){
+      // it is a list of states 
+      if(rows[i] && typeof rows[i] === 'object' && rows[i].constructor === Object){
+        let keys = Object.keys(rows[i]);
+        let record = {};
+        //  coppy the object 
+        for(var j=0;j<keys.length;j++){
+          record[keys[j]] = rows[i][keys[j]]
+        }
+        //  now add the original row so we can reference it during the saveChanges()
+        record["_original"] = rows[i]
+        //  it is just one singular object 
+        this.records.push(record)
+
+      }else{
+        console.error("Please Feed Me a valid state object or list of state objects")
+      }
+    }
+    
+
+  }
 
 
 

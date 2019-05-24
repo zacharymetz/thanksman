@@ -110,8 +110,13 @@ class TableAbstract{
           //  im guessing we can use the array here since it is kind of being passed though by the 
           //  function to check 
       // first we need to get the type of variable that it is 
-      this.parseLambdaFuncton(filterObject);
-
+      let parsed = this.parseLambdaFunction(filterObject);
+      
+      for(var i=0;i<parsed.length;i++){
+        if(parsed[i] && typeof parsed[i] === 'object' ){
+          this.queryState.filters.push(parsed[i]);
+        }
+      }
 
     }else{
       console.error("Invalid Filter object attempting to be applied");
@@ -211,7 +216,7 @@ class TableAbstract{
             operator : operator,
             value : value
           })
-          console.log(parsed_expression)
+          //console.log(parsed_expression)
           //  remove the value from the string
           console.log(rightHand)
           rightHand = rightHand.substring(value.toString().length)
@@ -391,6 +396,8 @@ class TableAbstract{
       }else{
         andFlag = true;
       }
+
+
 
       //  the structure of the filter object 
 

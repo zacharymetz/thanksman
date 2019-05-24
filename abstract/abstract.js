@@ -38,7 +38,7 @@ class TableAbstract{
 
     this.columns = structure;
     this.tableName = name;
-    this.schema = schema
+    this.schema = schema;
 
 
   }
@@ -105,10 +105,155 @@ class TableAbstract{
         }
       }
       
+    }else if(filterObject && {}.toString.call(filterObject) === '[object Function]'){
+      //  if its a lambda function lets see if we can do some basic parsing 
+          //  im guessing we can use the array here since it is kind of being passed though by the 
+          //  function to check 
+      // first we need to get the type of variable that it is 
+      this.parseLambdaFuncton(filterObject);
+
+
     }else{
       console.error("Invalid Filter object attempting to be applied");
     }
     return this;
+  }
+
+  /**
+   * Parses a lambda function like x => x.id == 4 or x => x.id > 3 or x => array.includes(x.id) 
+   * 
+   * The parsing on supports on liners and not code blocks so no {}
+   * 
+   * Supported logical operations 
+   *  == , !=  , > , < , >= , <= , includes
+   *    as  well as support for  &&, || and () logical operators  
+   */
+
+  parseLambdaFunction(functionToParse){
+    let operators = ["==" , "!="   , ">=" , "<=" , ">" , "<"];
+    let methods = ["includes"];
+    let logical = [")","(","&","|"];
+    functionToParse = functionToParse.toString().replace(/ /g,'');
+    //  the first thing we should do is seprate the left and right hand of the assignment 
+    let leftHand = functionToParse.split("=>")[0];
+    
+    //  from here lets get rid of any white space and get the variable as a string 
+    let parameter = leftHand.trim();
+
+    //  now its time to takle the ever present threat of the left hand 
+    let rightHand = functionToParse.split("=>")[1].trim();  // trim get rid of excess white space
+
+    // start simple x => x.userid = 34
+    let parsed_expression = [];
+    let firstPeriod = rightHand.indexOf(".");
+    let bracket = rightHand.indexOf("("); //  only check left cuz cant open with right 
+    //  this loop will run until the function to parse is empty 
+    
+    while(rightHand != ""){
+      console.log(rightHand)
+      //  lets check to see if there is a ( , ), &&, ||  before anything else 
+      if(logical.includes(rightHand.charAt(0)) ){
+        let expression = rightHand.charAt(0);
+        //  since we only check for the first chracter we need to add the extra bit 
+        //  to avoid confusion later down the line 
+        if(["&","|"].includes(expression)){
+          expression = expression + expression;
+        }
+        parsed_expression.push(expression);
+        
+        //  now remove it form the original thing 
+        rightHand = rightHand.substr(expression.length);
+        
+      }else{
+        firstPeriod = rightHand.indexOf(".");
+        if(firstPeriod > rightHand.indexOf(parameter)){
+          let lowestIndex = rightHand.length;
+          let operatorIndex = 0;
+          for(var i=0;i<operators.length;i++){
+            //console.log(rightHand);
+            if(rightHand.indexOf(operators[i]) < lowestIndex && rightHand.indexOf(operators[i]) >= 0){
+              lowestIndex = rightHand.indexOf(operators[i]);
+              operatorIndex = i;
+            }
+          }
+          //  is after the first parameter so it is a normal boolean opperation 
+          
+          
+          let attibute = rightHand.substr(firstPeriod + 1, lowestIndex -2 );
+
+          //  do a check to see if the attibute is in the table here
+          
+          //  remove the portion of the string 
+          rightHand = rightHand.substr(lowestIndex).trim();
+
+          //  after the attribute we wanna parse the operator and the value 
+          let operator = rightHand.substr(0,operators[operatorIndex].length );
+          // strip the operator 
+          rightHand = rightHand.substr(operators[operatorIndex].length).trim();
+          // need to find out where the value ends becasue not parsing it 
+          let valueEndIndex = rightHand.length;
+          for(var i=0;i<logical.length;i++){
+            if( rightHand.indexOf(logical[i]) >= 0  && valueEndIndex > rightHand.indexOf(logical[i])){
+              valueEndIndex = rightHand.indexOf(logical[i]);
+            }
+          }
+          let value = rightHand.substring(0,valueEndIndex).trim();
+          //  preform a catch to make sure we send back the correct 
+          //  syntax to the db 
+          if(operator == "=="){
+            operator = "=";
+          }else if(operator == "!="){
+            operator = "<>";
+          }
+
+          parsed_expression.push({
+            columnName : attibute,
+            operator : operator,
+            value : value
+          })
+          console.log(parsed_expression)
+          //  remove the value from the string
+          console.log(rightHand)
+          rightHand = rightHand.substring(value.toString().length)
+          
+        }else{
+          //  if it lands here we know that the column is being compaired to an array or string so
+          //  we should act acroding 
+
+          //  we know where the period is so we should find out what operation is being performed 
+          let lowestIndex = rightHand.length;
+          let operatorIndex = 0;
+          for(var i=0;i<methods.length;i++){
+            if(rightHand.indexOf(methods[i]) < lowestIndex && rightHand.indexOf(methods[i]) >= 0){
+              lowestIndex = rightHand.indexOf(methods[i]);
+              operatorIndex = i;
+            }
+          }
+          //  now that we have the correct operator and we can snag it out of the expression and
+          //  get the important parts 
+
+        }
+      }
+        //  if there is then we can add that operator to the pased expresion list 
+        //  so we can go though it later and build more complex quries 
+      
+        //  if there is no one and we jsut jump strati into an expression and do the code we have bellow 
+    }
+    // now we are gonna build a loop 
+
+    //  find the first . since it should either be x.asd or array.includes
+    //  so we want to know if the first instance of x is before or after the first . 
+    
+
+    
+    //  find the variable 
+
+    //  figure out what is after the . 
+
+    //  whats the operator (includes will be differnt)
+
+    return parsed_expression
+
   }
   /**
    * set the sort by of the query to the column

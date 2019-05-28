@@ -33,7 +33,9 @@ class TableAbstract{
       },
       limit : 0,
       offset: 0,
-      filters : []
+      filters : [],
+      joins : [],
+      select : []
     };
 
     this.columns = structure;
@@ -92,14 +94,16 @@ class TableAbstract{
             this.queryState.filters.push({
               columnName : keys[i],
               operator : "in",
-              value : filters[[keys[i]]]
+              value : filters[[keys[i]]],
+              table : this.tableName
             })
           }else{
             //  it is a single value so just equals is good
             this.queryState.filters.push({
               columnName : keys[i],
               operator : "=",
-              value : filters[[keys[i]]]
+              value : filters[[keys[i]]],
+              table : this.tableName
             })
           }
         }
@@ -122,6 +126,81 @@ class TableAbstract{
       console.error("Invalid Filter object attempting to be applied");
     }
     return this;
+  }
+
+  /**
+   * This function is pretty much a copy of where and takes in a grid filter (jsGrid for now)
+   * and will apply it to the resulting query so a grid filter can just be passed through to it 
+   * 
+   * @param {*} gridFilter 
+   */
+  filter(gridFilter){
+    if(gridFilter && typeof gridFilter === 'object' && gridFilter.constructor === Object){
+      //  lets set the page index, sortField, sortOrder
+      this.offset(gridFilter.pageIndex - 1);
+      if(gridFilter.sortField){
+        this.sortBy(gridFilter.sortField);
+        //  set us to the 
+        if(gridFilter.sortOrder == 'desc'){
+          this.desc()
+        }else{
+          this.asc();
+        }
+      
+      }
+      
+      //  remove these therr properties form the lsit 
+      delete gridFilter.pageIndex;
+      delete gridFilter.sortField;
+      delete gridFilter.sortOrder;
+      //  now loop through the rest 
+      let keys = Object.keys(gridFilter);
+      console.log('sort order keys ',keys);
+      for(var i=0;i<keys.length;i++){
+        if(gridFilter[keys[i]] != '' && keys[i] != "pageSize"){  //  do a check to see if there is anything to filter by
+          //   get the type 
+          console.log("asdasd")
+            
+          let dataType = this.getColumnInfo(keys[i]).dataType;
+          if(dataType == 'text'){
+            this.where({
+              columnName : keys[i],
+              operator : "like",
+              value : gridFilter[[keys[i]]],
+              table : this.tableName
+            });
+          }else{
+            this.where({
+              columnName : keys[i],
+              operator : "=",
+              value : gridFilter[[keys[i]]],
+              table : this.tableName
+            });
+          }
+        }
+      }
+
+    }else{
+      console.error("Invalid Grid Filter object attempting to be applied");
+    }
+    return this;
+  }
+
+  join(tableToJoin,outerColumnName=null,innerColumnName=null){
+
+  }
+  innerJoin(tableToJoin,outerColumnName=null,innerColumnName=null){
+
+  }
+  outerJoin(){
+
+  }
+  /**
+   * takes in a list of strings and only selects what you will pass through to it 
+   * @param {*sring} toSelect 
+   */
+  select(toSelect){
+
   }
 
   /**
@@ -271,7 +350,7 @@ class TableAbstract{
    * make the query sort by the decending value 
    */
   desc(){
-    this.queryState.sort = "DESC";
+    this.queryState.order = "DESC";
     return this;
   }
   asc(){
@@ -382,11 +461,47 @@ class TableAbstract{
    */
   generateSelectQuery(){
     //  should be a copy of query builder word for word 
-    let query_string ='SELECT * , count(*) OVER() AS itemsNumber From ' + this.schema + ".\"" + this.tableName + "\" " ;
+    let query_string ='SELECT *  , count(*) OVER() AS itemsNumber From ' + this.schema + ".\"" + this.tableName + "\" " ;
+
+    // need to see what to select and as what 
+    if(this.queryState.select == []){
+      //  if there is no things to select we will begin by adding a bunch of as to the qurey so that we can identify differnt column 
+      //  and then when we get the objects we can parse out the idenifiers into actual objects and sub objects 
+    }else{
+      //  
+    }
+
     let query_options = [];
     let andFlag = false; //if there is only one option no need for and
     let paramsCount = 0;
 
+    //  this is where the join code goes 
+
+    //  it looks at each column in the table and sees if there are any pk constraints and adds them to the join 
+    
+    let joinPortion = "    ";
+    let has_joins = false;
+    for(var i=0;i<this.columns.length;i++){
+      let column = this.columns[i]
+      console.log( column.column_name,column.is_foriegn_key,column.is_primary_key,column.references);
+      if(column.is_foriegn_key){
+        //  inner join asdfasdfasdf
+        joinPortion += "  inner join  " + this.schema + ".\"" + column.references.table + "\"  on  ";
+        //  on asd.asd = sdf.asd 
+        joinPortion += this.schema + ".\"" + this.tableName + "\"." + column.column_name + " = " +
+                      this.schema + ".\"" + column.references.table + "\"." + column.references.matchingColumn;
+        has_joins = true;  
+      }
+
+    }
+    //  now that we have all of the join columns its  time to add them to the
+    //  query
+    console.log(joinPortion)
+    joinPortion += "    ";
+    if(has_joins){
+      query_string += joinPortion;
+    }
+    //console.log(joinPortion)
     // we need to add all the where statmetns here 
     if(this.queryState.filters.length > 0){
       let filter_string = " Where ";
@@ -403,10 +518,16 @@ class TableAbstract{
 
       //  standard one way operators 
       if(["=",">","<",">=","<=","<>"].includes(  this.queryState.filters[i].operator) ){
-        
+        //  lets get the column and see if its it indeed an fk 
+        let column = this.getColumnInfo(this.queryState.filters[i].columnName);
+        console.log(column)
+        if(column && this.getColumnByConstraint(column.references.constraintColumn)){
+          console.log(this.queryState.filters[i].columnName, "  is an fk")
+        }
+
         //  TODO add in checks for differnt data types like string vs integers 
         query_options.push(this.queryState.filters[i].value);
-        filter_string += this.queryState.filters[i].columnName + "  " + this.queryState.filters[i].operator + "  $"+ query_options.length.toString() + "   ";
+        filter_string += "\"" + this.queryState.filters[i].table + "\"." + this.queryState.filters[i].columnName + "  " + this.queryState.filters[i].operator + "  $"+ query_options.length.toString() + "   ";
       // special case for between since it needs to have 2 vaiables 
       }else if(["between"].includes(this.queryState.filters[i].operator.toLowerCase())){
       
@@ -419,11 +540,11 @@ class TableAbstract{
     query_string += filter_string;
     }
     
-
+    console.log(this.queryState)
     // add the sort statements 
-    if(this.queryState.sort.column){
-      if(this.queryState.sort.order){
-         query_string += "ORDER BY " + this.schema +"." + this.tableName +"." + this.queryState.sort.column + " " + this.queryState.sort.order + " ";
+    if(this.queryState.sort){
+      if(this.queryState.order){
+         query_string += "ORDER BY " + this.schema +".\"" + this.tableName +"\"." + this.queryState.sort + " " + this.queryState.order + " ";
       }
     }
 
@@ -513,13 +634,36 @@ class TableAbstract{
         console.error("Please Feed Me a valid state object or list of state objects")
       }
     }
+
+    
     
 
   }
 
 
 
-  
+  /**
+     * gets all of the infomration that a column by its string name 
+     */
+    getColumnInfo(columnName){
+      for(var column in this.columns){
+        if(column.column_name == columnName){
+          return column;
+        }
+      }
+
+      return null
+    }
+
+    getColumnByConstraint(constraintName){
+      for(var column in this.columns){
+        if(column.constraint == constraintName){
+          return column;
+        }
+      }
+
+      return null
+    }
 
 
 

@@ -5,21 +5,20 @@ const  { Client } = require('pg');
  */
 class Database{
   
-  constructor(){
+  constructor(creds){
     //  hardcode for now 
-    
-    
+    this.hostname = creds.hostname;
+    this.username = creds.username;
+    this.password = creds.password;
+    this.databaseName = creds.databaseName;
+    this.schema = creds.schema;
   }
 
 
   
 
   async initalize(){
-    this.hostname = "";
-    this.username = "";
-    this.password = "";
-    this.databaseName = "";
-    this.schema = "";
+  
     let pool = new Client({
       user: this.username,
       host: this.hostname,
@@ -40,7 +39,7 @@ class Database{
         //  we need to make the first table and add the corisopnding column for it 
         tables[column_schema[i].table_name] = []
       }
-
+      let newTable = false;
       //  if the column does not exist then we can 
       if(!columnInTable(tables[column_schema[i].table_name],column_schema[i].column_name)){
 
@@ -62,25 +61,39 @@ class Database{
           interval_type: column_schema[i].interval_type,
           interval_precision: column_schema[i].interval_precision,
           is_updatable: column_schema[i].is_updatable,
+          
           /* these are the most inmporant feilds since its how we can relate on to another */
           is_primary_key : false,
           is_foriegn_key : false,
-          references : null
+          constraint: null,
+          references : {}
         });
+        newTable = true;
       }
+    }
+    for(var i=0;i<column_schema.length;i++){
+      
       //  now that we know if its added we need to determin the rules around te relation 
+      //console.log(column_schema[i].column_name,column_schema[i].constraint_name,column_schema[i].unique_constraint_name)
       if(column_schema[i].constraint_name != null){
         
+       
         //  if we land here this feild has some sort of contrtaint on it 
         let contraint = column_schema[i].constraint_name.split("_")
         //console.log(contraint)
         if(contraint[contraint.length -1] == "pkey"){
           //  this column is a primary key
-          tables[column_schema[i].table_name][tables[column_schema[i].table_name].length - 1].is_primary_key = true;
+          let col = columnInTable(tables[column_schema[i].table_name],column_schema[i].column_name);
+          console.log("pk has been found", column_schema[i].column_name,contraint);
+          col.is_primary_key = true;
+          col.constraint = column_schema[i].constraint_name;
+          col.is_foriegn_key = false;
         }else if(contraint[contraint.length -1] == "fkey"){
+          console.log("fk has been found", column_schema[i].column_name,contraint,column_schema[i].unique_constraint_name);
           //  this column is a foriegn key so lets find the pk that 
           //  it goes along with and the table name so we can add it 
           //  to the references list 
+          let col = columnInTable(tables[contraint[0]],contraint[1]);
           let refernce = {};
           //  this will get is the string name of the table that this relates too
           let masterTable = column_schema[i].unique_constraint_name.split("_")[0];
@@ -89,10 +102,10 @@ class Database{
           //  it is refernceing in the new table 
           refernce.table = masterTable;
           refernce.constraintColumn = column_schema[i].unique_constraint_name; // getPKForTable(masterTable)
-          
-          tables[column_schema[i].table_name][tables[column_schema[i].table_name].length-1].references = refernce;
-          tables[column_schema[i].table_name][tables[column_schema[i].table_name].length-1].is_foriegn_key = true;
-          
+          refernce.matchingColumn = column_schema[i].column_name;
+          col.references = refernce;
+          col.is_foriegn_key = true;
+          //console.log(refernce);
         }else if(contraint[contraint.length -1] == "key"){
           //  this column is a key 
 
@@ -104,7 +117,7 @@ class Database{
     // now we ahve the tables lets make the  table objects and give them all the information 
     //  needed to manager themselvs 
     var tableNames = Object.keys(tables);
-    console.log(tableNames);
+    //console.log(tableNames);
     
     for(var i=0;i<tableNames.length;i++){
       var tableName = tableNames[i]
@@ -113,8 +126,9 @@ class Database{
     }
 
   }
-  static async create() {
-    const o = new Database();
+  
+  static async create(creds) {
+    const o = new Database(creds);
     await o.initalize();
     return o;
   }
@@ -127,10 +141,19 @@ exports.DatabaseAbstract = Database;
 
 
 function columnInTable(table,column){
+  //  if table is of type string then set table to the actual table 
   for(var col in table){
+    col = table[col]
     if(col.column_name == column){
-      return true;
+      return col;
     }
   }
   return false;
 }
+
+
+
+// Returns if a value is a string
+function isString (value) {
+  return typeof value === 'string' || value instanceof String;
+  }

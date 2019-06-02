@@ -135,6 +135,11 @@ class TableAbstract{
    * @param {*} gridFilter 
    */
   filter(gridFilter){
+    //  if we pass through something that doesnt have a filter just ignore it 
+    console.log("gridfilter",gridFilter== {})
+    if(gridFilter == {}){
+      return;
+    }
     if(gridFilter && typeof gridFilter === 'object' && gridFilter.constructor === Object){
       //  lets set the page index, sortField, sortOrder
       this.offset(gridFilter.pageIndex - 1);
@@ -187,7 +192,7 @@ class TableAbstract{
   }
 
   join(tableToJoin,outerColumnName=null,innerColumnName=null){
-
+  
   }
   innerJoin(tableToJoin,outerColumnName=null,innerColumnName=null){
 
@@ -553,7 +558,7 @@ class TableAbstract{
       query_string += " LIMIT " + this.queryState.limit + " ";
     }
 
-    if(this.queryState.offset){
+    if(this.queryState.offset && Number.isInteger(this.queryState.offset)){
       query_string += " OFFSET " + this.queryState.offset + " "
     }
     

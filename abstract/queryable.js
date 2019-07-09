@@ -1,28 +1,33 @@
 const  { Client } = require('pg');
 
-//  goal is to make it easy to pass a db row from the backend
-//  to the front end and track changes between them more 
-//  in the background 
-
-//  all this does is represent a table in the database 
-//  when extened into other classes it will be able to 
-//  querey those tables from strait objects 
-
-/**
- * pretty much this class is meant to represent the actuall table in the database.
- * It has its own internal state of the records its pulled to see if any have been added,
- * modified or deleted and reflect thoses changes in the database (imagine this as 
- * 'borrowing' certian records from the database and 'giving them back' when your done
- * with what ever modifications were made )
+/*
+ * The querables job is to hold a query sate, key track of the objects 
+ *
  */
 
 
 class Queryable{
   
-  constructor(database,name,schema,structure){
-    this.database = database;
-    //  so the structure is going to be how 
-    //  a row object is going to be built 
+  constructor(parent){
+    
+    //  in the constructor we should get a sense for what the db structure is mayber or 
+    // if there is any related tables that have a many to many or on to may with us 
+    //  they become functions where we return to them a new queryable that targets 
+    //  that table but with a reference to our table...
+    
+    if(parent.constructor.name == "Queryable"){
+      //  if we were called from a nother queryable we will need to inherit all of their 
+      //  queryparams but for its own table that will subsequently become an inner join 
+    }else if(parent.constructor.name == "TableAbstract"){
+      //  if its a table abstract then we can set up its table attributes so we know the where
+      //  statement and the other meta infomation;
+    
+    }else{
+      console.err("You Need to Supply a valid parent object for the creation of a queryable");
+      throw "ERR";
+      return;
+    }
+   
     this.records = []; // the list of original records that 
     this.addedRecords = []; // a list of records to be added to the database 
     this.queryState = { //  the query state is what holds all of the modifications to the
@@ -37,10 +42,6 @@ class Queryable{
       joins : [],
       select : []
     };
-
-    this.columns = structure;
-    this.tableName = name;
-    this.schema = schema;
 
 
   }
@@ -673,7 +674,7 @@ class Queryable{
 
 
 }
-exports.TableAbstract = TableAbstract;
+exports.Queryable = Queryable;
 /**
  * This is the abstract class that will keep track of all the 
  * changes that a row goes through for the saveChagnes() 

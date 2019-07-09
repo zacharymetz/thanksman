@@ -119,11 +119,24 @@ class Database{
     var tableNames = Object.keys(tables);
     //console.log(tableNames);
     
-    for(var i=0;i<tableNames.length;i++){
-      var tableName = tableNames[i]
-
-      this[tableName] = new TableAbstract(this,tableNames[i],this.schema,tables[tableNames[i]]);
-    }
+    
+    
+    
+    
+    //  HERE IS WHERE WE MNAKE THE ABSTRACT OBJECT 
+    
+    //  first we need to make the scemeas 
+    //  this[schemaName] = {};
+        // for each table we make a new table abstract 
+        // this[schemaName][tableName] = new TableAbstract();
+    
+    //  now that the basic is set up we need to go through all of the relations 
+    //  for each relation in relations 
+        //  this[schemaName][relationHolder][relatingTableName] = () =>{
+        //    return new Queryable(this[schemaName][relatingTableName]).contrainBy(this[schemaName][relationHolder]);
+        //}
+            //  this new function will have to be passed down to the the queryale the table abstract will create so that 
+            //  it can be called anywhere 
 
   }
   
